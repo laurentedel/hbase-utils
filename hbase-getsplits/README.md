@@ -20,6 +20,8 @@ You'll also have the store size.
 ## Building
 
 Run `mvn package` to build.
+I've included a dirty *maven-antrun-plugin* in the pom.xml so it upload directly in hbase-client of the sandbox, just remove the `build` section of the pom.xml if you don't want that!
+
 
 
 ## License
