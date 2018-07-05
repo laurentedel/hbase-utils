@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="maven-antrun-" default="main"  >
+<target name="main">
+  <scp trust="true" password="hadoop" localFile="/Users/laurentedel/IdeaProjects/utils/hbase-multiget/target/hbase-multiget-0.1-SNAPSHOT.jar" remoteToFile="root@sandbox.hortonworks.com:/usr/hdp/current/hbase-client/" port="2222" verbose="true"></scp>
+</target>
+</project>

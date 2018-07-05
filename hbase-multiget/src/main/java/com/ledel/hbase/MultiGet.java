@@ -50,8 +50,7 @@ public class MultiGet {
       System.exit(1);
     }
 
-     List<String> list = FileUtils.readLines(new File("gets.txt"), "utf-8");
-     System.out.println("LIST: " + list.toString());
+    List<String> list = FileUtils.readLines(new File("gets.txt"), "utf-8");
 
     Configuration config = HBaseConfiguration.create();
     Connection conn = ConnectionFactory.createConnection(config);
@@ -65,6 +64,7 @@ public class MultiGet {
       }
 
       Result[] results = table.get(gets);
+      long totalSize = 0L;
       for (Result result : results) {
         String row = Bytes.toString(result.getRow());
         //String value = Bytes.toString(result.getValue(Bytes.toBytes("info"), Bytes.toBytes("0")));
@@ -72,23 +72,32 @@ public class MultiGet {
         NavigableMap<byte[], NavigableMap<byte[], NavigableMap<Long, byte[]>>> map = result.getMap();
         for (Map.Entry<byte[], NavigableMap<byte[], NavigableMap<Long, byte[]>>> navigableMapEntry : map.entrySet()) {
           String family = Bytes.toString(navigableMapEntry.getKey());
-          System.out.println(StringUtils.repeat("#", row.length()+5));
-          System.out.println("ROW:  " + row);
-          System.out.println("size: " + Result.getTotalSizeOfCells(result));
-          System.out.println("  FAMILY: " + family);
+          //System.out.println(StringUtils.repeat("#", row.length()+5));
+          //System.out.println("ROW:  " + row);
+          LOG.debug("[ROWKEY]  " + row);
+          totalSize += Result.getTotalSizeOfCells(result);
+          LOG.debug("size: " + Result.getTotalSizeOfCells(result));
+          LOG.debug("  [FAMILY] " + family);
           NavigableMap<byte[], NavigableMap<Long, byte[]>> familyContents = navigableMapEntry.getValue();
           for (Map.Entry<byte[], NavigableMap<Long, byte[]>> mapEntry : familyContents.entrySet()) {
             String qualifier = Bytes.toString(mapEntry.getKey());
-            System.out.println("    QUALIFIER: " + qualifier);
+            LOG.debug("    [QUALIFIER] " + qualifier);
             NavigableMap<Long, byte[]> qualifierContents = mapEntry.getValue();
             for (Map.Entry<Long, byte[]> entry : qualifierContents.entrySet()) {
               Long timestamp = entry.getKey();
               String value = Bytes.toString(entry.getValue());
-              System.out.printf("      VALUE: %s, %d\n", value, timestamp);
+              LOG.debug("      [VALUE] " + value + ", [TS] " + timestamp);
             }
           }
         }
       }
+
+//      System.out.println("######################");
+//      System.out.println("ROWS:  " + results.length);
+//      System.out.println("SIZE:  " + totalSize);
+      LOG.warn("Total rows get: " + results.length);
+      LOG.warn("Total size (bytes): " + totalSize);
+      LOG.warn("Total size (MB): " + totalSize/1024/1024);
     }
     finally {
       table.close();
