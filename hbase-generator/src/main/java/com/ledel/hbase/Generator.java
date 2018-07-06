@@ -15,9 +15,10 @@ import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
-
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Random data generator
@@ -25,8 +26,8 @@ import java.util.UUID;
  * <p>
  * Usage: hadoop jar <jarname> <tablename>
  * or export jar in hbase client classpath and:
- * hbase com.ledel.hbase.Generator --table=<TABLENAME> --rows=1000 --columnfamilies=1 --columns=12
- *
+ * hbase com.ledel.hbase.Generator --table=<TABLENAME> --rows=1000 --columnfamilies=1 --columns=12 [--length=20]
+ * default length of each column is 20
  */
 public class Generator {
   private static final Log LOG = LogFactory.getLog(Generator.class);
@@ -45,16 +46,28 @@ public class Generator {
     options.addOption(t);
 
     Option r = new Option("r", "rows", true, "number of rows to be inserted");
-    t.setRequired(true);
+    r.setRequired(true);
     options.addOption(r);
 
     Option cf = new Option("cf", "columnfamilies", true, "number of ColumnFamilies");
-    t.setRequired(true);
+    cf.setRequired(true);
     options.addOption(cf);
 
     Option q = new Option("q", "columns", true, "number of Columns in each ColumnFamily");
-    t.setRequired(true);
+    q.setRequired(true);
     options.addOption(q);
+
+    Option l = new Option("l", "length", true, "length of each value");
+    l.setRequired(false);
+    options.addOption(l);
+
+    Option b = new Option("b", "batchsize", true, "batch size of puts (default 1000)");
+    b.setRequired(false);
+    options.addOption(b);
+
+    Option o = new Option("o", "overwrite", true, "overwrite the table (reset all data)");
+    o.setRequired(false);
+    options.addOption(o);
 
     HelpFormatter formatter = new HelpFormatter();
     CommandLine cmd = null;
@@ -72,42 +85,106 @@ public class Generator {
     int columnFamilies = Integer.parseInt(cmd.getOptionValue("cf"));
     int columnQualifiers = Integer.parseInt(cmd.getOptionValue("q"));
     int rows = Integer.parseInt(cmd.getOptionValue("r"));
+    int length = Integer.parseInt(cmd.getOptionValue("l", "20"));
+    int BATCHSIZE = Integer.parseInt(cmd.getOptionValue("b", "1000"));
+    boolean overwrite = Boolean.parseBoolean(cmd.getOptionValue("o", "false"));
+
 
     HTableDescriptor hTable = new HTableDescriptor(TABLE_NAME);
-    hTable.setConfiguration("hbase.table.sanity.checks", "false");
+    //hTable.setConfiguration("hbase.table.sanity.checks", "false");
 
     Admin admin = conn.getAdmin();
     if (admin.tableExists(TABLE_NAME)) {
-      LOG.fatal("Table " + TABLE_NAME + "already exists");
-      System.exit(0);
-    } else {
-      for (int j = 0; j < columnFamilies; j++) {
-        hTable.addFamily(new HColumnDescriptor("cf" + j));
+      if (!overwrite) {
+        LOG.fatal("Table " + TABLE_NAME + " already exists");
+        System.exit(0);
+      } else {
+        admin.disableTable(TABLE_NAME);
+        admin.deleteTable(TABLE_NAME);
       }
-      admin.createTable(hTable);
     }
+    for (int j = 0; j < columnFamilies; j++) {
+      hTable.addFamily(new HColumnDescriptor("cf" + j));
+    }
+    admin.createTable(hTable);
 
     Table table = conn.getTable(TABLE_NAME);
-    List<Put> puts = new ArrayList<Put>();
+    List<Put> puts = new ArrayList<>();
+    puts.clear();
 
+    long start = System.currentTimeMillis();
     for (int i = 0; i < rows; i++) {
-      puts.clear();
-      Put p = new Put(Bytes.toBytes("row" + i));
+      Put p = new Put(Bytes.toBytes("row_" + i));
 
       for (int j = 0; j < columnFamilies; j++) {
         for (int k = 0; k < columnQualifiers; k++) {
-          String uuid = UUID.randomUUID().toString();
-          p.addColumn(Bytes.toBytes("cf" + j), Bytes.toBytes("cq" + k), Bytes.toBytes(uuid));
+          String value = RandomString.generate(length);
+          p.addColumn(Bytes.toBytes("cf" + j), Bytes.toBytes("cq" + k), Bytes.toBytes(value));
           puts.add(p);
           LOG.debug("added (row " + i + ", cf " + j + ", cq " + k + ") to put");
         }
       }
-      table.put(puts);
-      LOG.info("inserted " + puts.size() + "columns in a row");
+
+      // Log and insert rows every <BATCHSIZE> rows
+      if (i % BATCHSIZE == 0) {
+        table.put(puts);
+        /* LOG.info(i + "/" + rows + " rows [" + round(i*100/rows) + "%] inserted in " + (System.currentTimeMillis() - start2) + "ms"); */
+        printProgress(start, rows, i);
+        puts.clear();
+      }
     }
+
+    // finish it :)
+    table.put(puts);
+    long elapsed = System.currentTimeMillis() - start;
+    printProgress(start, rows, rows);
+    LOG.info(rows + " rows inserted in " + elapsed + "ms (" + (rows * 1000 / elapsed) + "rows/s)");
 
     conn.close();
 
   }
 
+  public static class RandomString {
+    private static final String ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_ ";
+    private static final Random RANDOM = new Random();
+
+    /**
+     * Generates random string of given length from Base65 alphabet (numbers, lowercase letters, uppercase letters).
+     *
+     * @param count length
+     * @return random string of given length
+     */
+    static String generate(int count) {
+      StringBuilder sb = new StringBuilder();
+      for (int i = 0; i < count; ++i) {
+        sb.append(ALPHABET.charAt(RANDOM.nextInt(ALPHABET.length())));
+      }
+      return sb.toString();
+    }
+  }
+
+  private static void printProgress(long startTime, long total, long current) {
+    long eta = current == 0 ? 0 :
+            (total - current) * (System.currentTimeMillis() - startTime) / current;
+    String etaHms = current == 0 ? "N/A" :
+            String.format("%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(eta),
+                    TimeUnit.MILLISECONDS.toMinutes(eta) % TimeUnit.HOURS.toMinutes(1),
+                    TimeUnit.MILLISECONDS.toSeconds(eta) % TimeUnit.MINUTES.toSeconds(1));
+
+    StringBuilder string = new StringBuilder(140);
+    int percent = (int) (current * 100 / total);
+    string
+            .append('\r')
+            .append(String.join("", Collections.nCopies(percent == 0 ? 2 : 2 - (int) (Math.log10(percent)), " ")))
+            .append(String.format(" %d%% [", percent))
+            .append(String.join("", Collections.nCopies(percent, "=")))
+            .append('>')
+            .append(String.join("", Collections.nCopies(100 - percent, " ")))
+            .append(']')
+            .append(String.join("", Collections.nCopies(current == 0 ? (int) (Math.log10(total)) : (int) (Math.log10(total)) - (int) (Math.log10(current)), " ")))
+            .append(String.format(" %d/%d, ETA: %s", current, total, etaHms));
+    System.out.print("\033[H\033[2J");
+    System.out.flush();
+    LOG.info(string);
+  }
 }
