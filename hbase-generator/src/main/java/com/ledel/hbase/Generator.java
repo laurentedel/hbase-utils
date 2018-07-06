@@ -35,10 +35,8 @@ public class Generator {
   public static void main(String[] args) throws IOException {
 
     Logger.getRootLogger().setLevel(Level.INFO);
-    // create the command line parser
-    CommandLineParser parser = new GnuParser();
 
-    // create the Options
+    CommandLineParser parser = new GnuParser();
     Options options = new Options();
 
     Option t = new Option("t", "table", true, "HBase table to be created");
@@ -79,15 +77,15 @@ public class Generator {
       System.exit(1);
     }
 
-    Configuration config = HBaseConfiguration.create();
-    Connection conn = ConnectionFactory.createConnection(config);
-    TableName TABLE_NAME = TableName.valueOf(cmd.getOptionValue("table"));
-    int columnFamilies = Integer.parseInt(cmd.getOptionValue("cf"));
-    int columnQualifiers = Integer.parseInt(cmd.getOptionValue("q"));
-    int rows = Integer.parseInt(cmd.getOptionValue("r"));
-    int length = Integer.parseInt(cmd.getOptionValue("l", "20"));
-    int BATCHSIZE = Integer.parseInt(cmd.getOptionValue("b", "1000"));
-    boolean overwrite = Boolean.parseBoolean(cmd.getOptionValue("o", "false"));
+    Configuration config  = HBaseConfiguration.create();
+    Connection conn       = ConnectionFactory.createConnection(config);
+    TableName TABLE_NAME  = TableName.valueOf(cmd.getOptionValue("table"));
+    int columnFamilies    = Integer.parseInt(cmd.getOptionValue("cf"));
+    int columnQualifiers  = Integer.parseInt(cmd.getOptionValue("q"));
+    int rows              = Integer.parseInt(cmd.getOptionValue("r"));
+    int length            = Integer.parseInt(cmd.getOptionValue("l", "20"));
+    int BATCHSIZE         = Integer.parseInt(cmd.getOptionValue("b", "1000"));
+    boolean overwrite     = Boolean.parseBoolean(cmd.getOptionValue("o", "false"));
 
 
     HTableDescriptor hTable = new HTableDescriptor(TABLE_NAME);
@@ -103,6 +101,8 @@ public class Generator {
         admin.deleteTable(TABLE_NAME);
       }
     }
+
+    // add the defined number of ColumnFamilies
     for (int j = 0; j < columnFamilies; j++) {
       hTable.addFamily(new HColumnDescriptor("cf" + j));
     }
